@@ -1,0 +1,42 @@
+{
+  "name": "pi-search",
+  "version": "1.0.0",
+  "description": "Web search and content analysis extension for pi, powered by Gemini API",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "keywords": [
+    "pi",
+    "pi-extension",
+    "web-search",
+    "gemini",
+    "google",
+    "url-analysis",
+    "youtube"
+  ],
+  "author": "ttttmr",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ttttmr/pi-search.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ttttmr/pi-search/issues"
+  },
+  "homepage": "https://github.com/ttttmr/pi-search#readme",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@mariozechner/pi-coding-agent": "^0.51.5",
+    "@sinclair/typebox": "^0.32.15"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  }
+}
