@@ -1,6 +1,6 @@
 {
   "name": "pi-web-search",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Web search and content analysis extension for pi, powered by Gemini API",
   "type": "module",
   "main": "dist/index.js",

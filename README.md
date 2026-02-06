@@ -5,8 +5,7 @@ A pi extension that provides web search and content analysis capabilities powere
 ## Features
 
 - **🔍 Web Search** - Google search with citations
-- **📄 URL Analysis** - Analyze web pages, PDFs, and images (up to 20 URLs)
-- **🎥 YouTube** - Video summaries and Q&A
+- **📄 URL Analysis** - Analyze web pages, PDFs, images, and YouTube videos (up to 20 URLs)
 
 ## Installation
 

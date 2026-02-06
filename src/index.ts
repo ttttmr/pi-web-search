@@ -1,7 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { webSearch, WebSearchSchema } from "./web_search.js";
 import { urlContext, UrlContextSchema } from "./url_context.js";
-import { youtubeVideo, YoutubeVideoSchema } from "./youtube_video.js";
 
 export default function (pi: ExtensionAPI) {
     pi.registerTool({
@@ -15,16 +14,8 @@ export default function (pi: ExtensionAPI) {
     pi.registerTool({
         name: "url_context",
         label: "URL Context",
-        description: "Analyze web pages and documents. Extract data, compare documents, synthesize content. Supports text/html, PDF, images, JSON, CSV. Up to 20 URLs.",
+        description: "Analyze the content of up to 20 public URLs. Supports web pages, documents, images, and YouTube videos.",
         parameters: UrlContextSchema,
         execute: urlContext
-    });
-
-    pi.registerTool({
-        name: "youtube_video",
-        label: "YouTube Video",
-        description: "Analyze YouTube videos. Summarize, answer questions, find timestamps. Supports video clipping (start/end offsets). Preview feature.",
-        parameters: YoutubeVideoSchema,
-        execute: youtubeVideo
     });
 }
