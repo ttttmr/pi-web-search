@@ -1,4 +1,4 @@
-# pi-search
+# pi-web-search
 
 A pi extension that provides web search and content analysis capabilities powered by Gemini API.
 
@@ -11,7 +11,7 @@ A pi extension that provides web search and content analysis capabilities powere
 ## Installation
 
 ```bash
-pi install npm:pi-search
+pi install npm:pi-web-search
 ```
 
 ## Configuration
