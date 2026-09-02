@@ -18,7 +18,7 @@ export function formatResult(text: string, details: any): AgentToolResult<any> {
 
 // --- Model Selection ---
 
-const SUPPORTED_PROVIDERS = ["google-generative-ai", "openai-responses", "azure-openai-responses", "openai-codex-responses", "anthropic-messages"];
+const SUPPORTED_PROVIDERS = ["google-generative-ai", "antigravity", "openai-responses", "azure-openai-responses", "openai-codex-responses", "anthropic-messages"];
 const WEB_SEARCH_CONFIG_PATH = join(homedir(), ".pi", "agent", "web-search.json");
 
 type WebSearchModelConfig =

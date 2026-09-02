@@ -7,13 +7,20 @@ import { TextEncoder, TextDecoder } from "util";
 
 type ProviderKind = "google" | "openai" | "anthropic" | "unsupported";
 
-type GoogleRequestBuilder = (model: Model<Api>, body: any) => { url: string; headers: Record<string, string>; body: any };
+type GoogleRequestBuilder = (model: Model<Api>, body: any, auth?: ResolvedAuth) => { url: string; headers: Record<string, string>; body: any };
 
 type ProviderConfig = {
     kind: ProviderKind;
     searchTool?: string;
     urlContextTool?: string;
     buildRequest?: GoogleRequestBuilder;
+};
+
+const ANTIGRAVITY_MODEL_MAP: Record<string, string> = {
+    "gemini-3.7-flash": "gemini-3.7-flash-medium",
+    "gemini-3.7-flash-medium": "gemini-3.7-flash-medium",
+    "gemini-3.6-flash": "gemini-3.6-flash-low",
+    "gemini-3.5-flash": "gemini-3.5-flash-extra-low",
 };
 
 const GOOGLE_PROVIDERS: Record<string, ProviderConfig> = {
@@ -29,6 +36,53 @@ const GOOGLE_PROVIDERS: Record<string, ProviderConfig> = {
             },
             body
         })
+    },
+    "antigravity": {
+        kind: "google",
+        searchTool: "google_search",
+        urlContextTool: "url_context",
+        buildRequest: (model, body, auth) => {
+            let token = "";
+            let projectId = "aicode-consumers";
+            if (auth && auth.ok && auth.apiKey) {
+                try {
+                    const parsed = JSON.parse(auth.apiKey);
+                    token = parsed.token || auth.apiKey;
+                    projectId = parsed.projectId || projectId;
+                } catch {
+                    token = auth.apiKey;
+                }
+            }
+            const runtimeModel = ANTIGRAVITY_MODEL_MAP[model.id] || model.id;
+            const platform = process.platform === "darwin" ? "MACOS" : process.platform === "win32" ? "WINDOWS" : "LINUX";
+            const osType = process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "windows" : "linux";
+            const arch = process.arch === "arm64" ? "arm64" : "x64";
+            return {
+                url: "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                    "Accept": "text/event-stream",
+                    "User-Agent": `antigravity/hub/2.8.0 ${osType}/${arch}`,
+                    "X-Goog-Api-Client": "google-cloud-sdk vscode_cloudshelleditor/0.1",
+                    "Client-Metadata": JSON.stringify({
+                        ideType: "ANTIGRAVITY",
+                        platform,
+                        pluginType: "GEMINI"
+                    })
+                },
+                body: {
+                    project: projectId,
+                    model: runtimeModel,
+                    request: {
+                        contents: body.contents,
+                        ...(body.tools ? { tools: body.tools } : {})
+                    },
+                    requestType: "AGENT",
+                    userAgent: "antigravity"
+                }
+            };
+        }
     }
 };
 
@@ -571,13 +625,13 @@ async function callGoogleStream(
         throw new Error(auth.error || "Failed to get API key and headers");
     }
 
-    const req = config.buildRequest(model, body);
+    const req = config.buildRequest(model, body, auth);
 
     // Handle auth
     if (auth.headers) {
         Object.assign(req.headers, auth.headers);
     }
-    if (auth.apiKey) {
+    if (auth.apiKey && model.provider !== "antigravity") {
         req.headers["x-goog-api-key"] = auth.apiKey;
     }
 
