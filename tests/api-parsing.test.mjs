@@ -61,6 +61,36 @@ function makeMinimalOpenAIResponse() {
   ]);
 }
 
+for (const [provider, api, baseUrl, apiKey] of [
+  ['openai', 'openai-responses', 'https://api.openai.com/v1', 'test-key'],
+  ['openai-codex', 'openai-codex-responses', 'https://chatgpt.com/backend-api', OPENAI_CODEX_TOKEN],
+  ['azure-openai', 'azure-openai-responses', 'https://example-resource.cognitiveservices.azure.com/openai/v1', 'test-key'],
+  ['github-copilot', 'openai-responses', 'https://api.individual.githubcopilot.com', 'test-key'],
+]) {
+  test(`${provider} web search leaves reasoning effort to the provider default`, async () => {
+    const previousFetch = globalThis.fetch;
+    let requestCount = 0;
+    globalThis.fetch = async (_url, init) => {
+      requestCount++;
+      const body = JSON.parse(init.body);
+      assert.equal(Object.hasOwn(body, 'reasoning'), false);
+      assert.deepEqual(body.tools, [{ type: 'web_search' }]);
+      return makeMinimalOpenAIResponse();
+    };
+
+    try {
+      for (const reasoning of [true, false]) {
+        await callApiStream(mockCtx(apiKey), {
+          id: 'gpt-6-astra', provider, api, baseUrl, reasoning, headers: {},
+        }, { contents: [{ parts: [{ text: 'Search OpenAI docs' }] }] });
+      }
+      assert.equal(requestCount, 2);
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+}
+
 test('GitHub Copilot Responses uses the credential-specific base URL exposed by pi', async () => {
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {

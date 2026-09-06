@@ -694,9 +694,8 @@ async function callOpenAIStream(
         stream: true,
         store: false,
     };
-    if (model.reasoning) {
-        requestBody.reasoning = { effort: "none" };
-    }
+    // Let the provider choose its supported reasoning default. Some reasoning
+    // models reject "none", and supported effort levels vary between models.
     if (isCodex) {
         requestBody.instructions = "Answer the user's request using web search when needed.";
         requestBody.text = { verbosity: "low" };
