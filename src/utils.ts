@@ -7,7 +7,7 @@ import { getProviderKind } from "./api.ts";
 
 // --- Model Selection ---
 
-const SUPPORTED_PROVIDERS = ["google-generative-ai", "antigravity", "xai", "openai-responses", "azure-openai-responses", "openai-codex-responses", "anthropic-messages", "ollama"];
+const SUPPORTED_PROVIDERS = ["google-generative-ai", "antigravity", "xai", "openai-responses", "azure-openai-responses", "openai-codex-responses", "anthropic-messages", "ollama", "opencodex"];
 
 type WebSearchModelConfig =
     | { status: "missing"; path: string; }

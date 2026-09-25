@@ -1,4 +1,4 @@
-export type ProviderKind = "google" | "openai" | "xai" | "anthropic" | "ollama" | "unsupported";
+export type ProviderKind = "google" | "openai" | "xai" | "anthropic" | "ollama" | "opencodex" | "unsupported";
 
 export interface Source {
     title: string;

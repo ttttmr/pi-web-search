@@ -71,6 +71,7 @@ export function isLikelyJunkSearchUrl(url: string | undefined): boolean {
     if (!url) return true;
     try {
         const parsed = new URL(url);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return true;
         const decodedPath = decodeURIComponent(parsed.pathname).toLowerCase();
         const suspiciousSuffixes = [
             ".gz", ".zip", ".tgz", ".tar", ".woff", ".woff2", ".ttf", ".otf", ".eot",

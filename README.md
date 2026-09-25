@@ -1,6 +1,6 @@
 # pi-web-search
 
-Provider-native web search for [pi](https://pi.dev) with Gemini + URL Context, xAI Grok, OpenAI Responses variants, Anthropic, Ollama Cloud, and OpenCode Zen/Go.
+Provider-native web search for [pi](https://pi.dev) with Gemini + URL Context, xAI Grok, OpenAI Responses variants, Anthropic, Ollama Cloud, OpenCodex, and OpenCode Zen/Go.
 
 ## Tools
 
@@ -18,6 +18,7 @@ Search the web using your currently selected model. Automatically picks the righ
 | GitHub Copilot | OpenAI Responses API web search via Copilot credentials |
 | Anthropic | Messages API web search |
 | Ollama Cloud | Ollama web search API (`/api/web_search`, standalone REST) |
+| OpenCodex | `/v1/alpha/search`, routed by OpenCodex to the current model's resolved provider |
 | OpenCode Zen / Go | Responses API web search (models that use the `openai-responses` API) |
 
 GitHub Copilot OpenAI Responses models are supported, including Business and Enterprise seats whose API endpoint is resolved from their authenticated Copilot credentials. This includes models such as `gpt-5.6-sol`.
@@ -25,6 +26,8 @@ GitHub Copilot OpenAI Responses models are supported, including Business and Ent
 OpenCode Zen and OpenCode Go Responses models (for example `opencode-go/gpt-5.6-luna` or `opencode-go/grok-4.6`) use the same Responses web search. OpenCode routes traffic per conversation, so `web_search` sends the `x-opencode-session` and `x-opencode-client` headers pi uses, keyed to the active session. Only models exposed through that Responses API are supported: OpenCode `chat/completions` models have no provider-native search tool, and the gateway's Anthropic Messages models are unverified.
 
 Ollama Cloud models (provider `ollama-cloud` or any model hosted on `ollama.com`) call Ollama's standalone web search API rather than a model tool. Auth is `OLLAMA_API_KEY` or `/login ollama-cloud`. Any `urls` are fetched through `web_fetch`. A local Ollama daemon is out of scope — the official `@ollama/pi-web-search` package covers its `/api/experimental/*` endpoints.
+
+OpenCodex models send the current `model.id` to the configured OpenCodex base URL. OpenCodex resolves aliases, combos, and the real adapter, then uses that provider's native search path when available; it does not make pi choose or maintain a second search model. The generated `opencodex-loopback` placeholder is omitted from auth headers, while a real configured OpenCodex data-plane key is sent as `x-opencodex-api-key`.
 
 Supports passing up to 20 additional URLs to analyze alongside the query. Successful `web_search` results are collapsed by default in pi; expand the tool call to inspect the full answer and source details.
 

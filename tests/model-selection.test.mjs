@@ -75,6 +75,22 @@ test('getModel accepts openai-codex Responses models', async () => {
   assert.equal(await getModel(ctx), model);
 });
 
+test('getModel accepts OpenCodex regardless of its pi wire API', async () => {
+  const model = {
+    id: 'devin/claude-sonnet-5',
+    provider: 'opencodex',
+    api: 'openai-completions',
+    baseUrl: 'http://127.0.0.1:10100/v1',
+    headers: {},
+  };
+  const ctx = {
+    model,
+    modelRegistry: { getAvailable: () => [model] },
+  };
+
+  assert.equal(await getModel(ctx), model);
+});
+
 test('getModel accepts xAI Responses models and rejects xAI Completions models', async () => {
   const model = {
     id: 'grok-4.6',

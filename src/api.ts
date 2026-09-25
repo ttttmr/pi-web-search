@@ -5,6 +5,7 @@ import { callGoogleStream, extractPromptFromGeminiBody } from "./providers/googl
 import { callOpenAIStream } from "./providers/openai.ts";
 import { callAnthropicStream } from "./providers/anthropic.ts";
 import { callOllamaSearch } from "./providers/ollama.ts";
+import { callOpenCodexSearch } from "./providers/opencodex.ts";
 import type { StreamResult } from "./providers/types.ts";
 
 export { getProviderKind, getConfig } from "./providers/config.ts";
@@ -34,6 +35,9 @@ export async function callApiStream(
     // carries the embedded URL list only for other providers, so strip it here.
     if (kind === "ollama") {
         return callOllamaSearch(ctx, model, prompt, urls, onUpdate, signal);
+    }
+    if (kind === "opencodex") {
+        return callOpenCodexSearch(ctx, model, prompt, onUpdate, signal);
     }
 
     if (kind === "openai" || kind === "xai") {
