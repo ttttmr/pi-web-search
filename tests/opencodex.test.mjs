@@ -79,6 +79,23 @@ test('OpenCodex preserves caller headers when no API key is resolved', async (t)
   );
 });
 
+test('OpenCodex preserves explicit admission and upstream auth headers together', async (t) => {
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    assert.equal(init.headers['x-opencodex-api-key'], 'explicit-admission-key');
+    assert.equal(init.headers.authorization, 'Bearer caller-chatgpt-token');
+    return Response.json({ output: 'forwarded', results: [] });
+  });
+
+  await callApiStream(
+    mockCtx('resolved-key-is-unused', undefined, {
+      'x-opencodex-api-key': 'explicit-admission-key',
+      Authorization: 'Bearer caller-chatgpt-token',
+    }),
+    MODEL,
+    { contents: [{ parts: [{ text: 'forward search' }] }] },
+  );
+});
+
 test('OpenCodex rejects oversized responses before reading their body', async (t) => {
   let canceled = false;
   t.mock.method(globalThis, 'fetch', async () => new Response(new ReadableStream({
