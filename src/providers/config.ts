@@ -84,6 +84,7 @@ function isOllamaModel(model: Model<Api>): boolean {
 }
 
 export function getProviderKind(model: Model<Api>): ProviderKind {
+    if (model.provider === "opencodex") return "opencodex";
     if (model.provider === "antigravity" || model.api === "antigravity") return "google";
     if (GOOGLE_PROVIDERS[model.provider] || GOOGLE_PROVIDERS[model.api]) return "google";
     if (isOllamaModel(model)) return "ollama";

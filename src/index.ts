@@ -67,7 +67,7 @@ export default function (pi: ExtensionAPI) {
     pi.registerTool({
         name: WEB_SEARCH_TOOL,
         label: "Web Search",
-        description: "Search the web using the current supported provider (Google Gemini, xAI Grok, OpenAI, Anthropic, Ollama, or OpenCode Zen/Go). Optionally include URLs to analyze alongside search results.",
+        description: "Search the web using the current supported provider (Google Gemini, xAI Grok, OpenAI, Anthropic, Ollama, OpenCodex, or OpenCode Zen/Go). Optionally include URLs to analyze alongside search results.",
         parameters: WebSearchSchema,
         execute: (id, params, signal = new AbortController().signal, onUpdate, ctx): Promise<AgentToolResult<any>> =>
             webSearch(id, params, signal, onUpdate, ctx, pi.getThinkingLevel()),
