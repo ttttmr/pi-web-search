@@ -3,7 +3,7 @@ import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { Type, type Static } from "typebox";
 import { callApiStream, getConfig } from "./api.ts";
 import { formatWebSearchResult } from "./format.ts";
-import { getWebSearchModel, missingWebSearchConfigResult, errorResult } from "./utils.ts";
+import { getWebSearchModel, getWebSearchThinkingLevel, missingWebSearchConfigResult, errorResult } from "./utils.ts";
 
 export const WebSearchSchema = Type.Object({
     query: Type.String({ description: "The search query or question to answer" }),
@@ -59,7 +59,7 @@ export async function webSearch(
         const result = await callApiStream(ctx, model, {
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             ...(tools ? { tools } : {})
-        }, onUpdate, signal, thinkingLevel, params.urls);
+        }, onUpdate, signal, getWebSearchThinkingLevel(thinkingLevel), params.urls);
 
         return formatWebSearchResult(result, { modelId: model.id });
     } catch (e: any) {

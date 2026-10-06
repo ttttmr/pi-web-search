@@ -60,6 +60,16 @@ When this file exists, `web_search` uses the configured provider/model first. If
 
 For OpenAI Responses models (including Azure, Codex, and Copilot), `web_search` inherits the agent's current thinking level on each call. Enabled levels are clamped to the selected search model's supported levels and translated through its `thinkingLevelMap` using pi's model metadata. This also applies when `web-search.json` selects a dedicated search model. Higher effort can increase latency and cost.
 
+To search at a fixed level instead, add `thinking` to `web-search.json`. It replaces the inherited level for every search and goes through the same clamping and mapping; `"off"` omits `reasoning`. Valid values: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. Like the inherited level, it only affects OpenAI Responses models.
+
+```json
+{
+  "provider": "openai-codex",
+  "model": "gpt-6-luna",
+  "thinking": "low"
+}
+```
+
 When thinking is off or unavailable, or the search model is non-reasoning, the request omits `reasoning` and leaves the choice to the provider. Off does not force reasoning off: some models reject `reasoning.effort: "none"`. Google, Anthropic, xAI, and Ollama behavior is unchanged.
 
 `url_context` is automatically removed from active tools when using a model that supports neither Gemini URL Context nor Ollama web fetch.

@@ -132,3 +132,34 @@ test('registered tool reads the current agent thinking level on every invocation
     assert.equal(signals.at(-1).aborted, false);
   });
 });
+
+test('web-search.json thinking overrides the agent thinking level', async (t) => {
+  let tool;
+  const efforts = [];
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    efforts.push(JSON.parse(init.body).reasoning?.effort);
+    return response();
+  });
+  registerExtension({
+    registerTool(value) { if (value.name === 'web_search') tool = value; },
+    getThinkingLevel() { return 'high'; },
+    getActiveTools() { return []; }, setActiveTools() {}, on() {},
+  });
+  const searchCtx = mockCtx('test-key', model, undefined, undefined, { models: [model] });
+  const search = () => tool.execute('test', { query: 'Search documentation' },
+    undefined, undefined, searchCtx);
+
+  for (const [thinking, expected] of [['low', 'low'], ['off', undefined], [undefined, 'high']]) {
+    await withWebSearchConfig({ provider: model.provider, model: model.id, thinking }, async () => {
+      const result = await search();
+      assert.equal(result.details.error, undefined);
+      assert.equal(efforts.at(-1), expected);
+    });
+  }
+
+  await withWebSearchConfig({ provider: model.provider, model: model.id, thinking: 'fast' }, async () => {
+    const result = await search();
+    assert.equal(result.details.error, 'invalid_config');
+    assert.match(result.content[0].text, /Invalid thinking level: "fast"/);
+  });
+});
