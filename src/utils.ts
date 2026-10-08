@@ -1,5 +1,5 @@
 import type { ExtensionContext, AgentToolResult } from "@earendil-works/pi-coding-agent";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -7,11 +7,13 @@ import { getProviderKind } from "./api.ts";
 
 // --- Model Selection ---
 
+const THINKING_LEVELS: ModelThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+
 const SUPPORTED_PROVIDERS = ["deepseek", "google-generative-ai", "antigravity", "xai", "openai-responses", "azure-openai-responses", "openai-codex-responses", "anthropic-messages", "ollama"];
 
 type WebSearchModelConfig =
     | { status: "missing"; path: string; }
-    | { status: "configured"; path: string; provider: string; modelId: string; }
+    | { status: "configured"; path: string; provider: string; modelId: string; thinkingLevel?: ModelThinkingLevel; }
     | { status: "invalid"; path: string; error: string; };
 
 function isSupportedSearchModel(model: Model<Api> | undefined): model is Model<Api> {
@@ -57,7 +59,15 @@ function readWebSearchModelConfig(): WebSearchModelConfig {
         return { status: "invalid", path, error: "Missing required string field: model" };
     }
 
-    return { status: "configured", path, provider: provider.trim(), modelId: modelId.trim() };
+    const thinkingLevel = parsed.thinking;
+    if (thinkingLevel !== undefined && !THINKING_LEVELS.includes(thinkingLevel)) {
+        return { status: "invalid", path, error: `Invalid thinking level: ${JSON.stringify(thinkingLevel)}. Use one of: ${THINKING_LEVELS.join(", ")}` };
+    }
+
+    return {
+        status: "configured", path, provider: provider.trim(), modelId: modelId.trim(),
+        ...(thinkingLevel !== undefined ? { thinkingLevel } : {}),
+    };
 }
 
 function getAvailableSupportedModels(ctx: ExtensionContext): string[] {
@@ -86,6 +96,15 @@ export async function getWebSearchModel(ctx: ExtensionContext): Promise<Model<Ap
     }
 
     return getModel(ctx);
+}
+
+// The thinking level for a search request: `thinking` from web-search.json when
+// set, otherwise the agent's current level.
+export function getWebSearchThinkingLevel(inherited: ModelThinkingLevel | undefined): ModelThinkingLevel | undefined {
+    const config = readWebSearchModelConfig();
+    return config.status === "configured" && config.thinkingLevel !== undefined
+        ? config.thinkingLevel
+        : inherited;
 }
 
 // --- Error Results ---
