@@ -18,7 +18,12 @@ const CLAUDE_CODE_SYSTEM_PROMPT = "You are Claude Code, Anthropic's official CLI
 
 function resolveAnthropicMessagesUrl(baseUrl: string): string {
     const base = baseUrl.replace(/\/+$/, "");
-    return base.endsWith("/v1") ? `${base}/messages` : `${base}/v1/messages`;
+    const resolved = base.endsWith("/v1") ? `${base}/messages` : `${base}/v1/messages`;
+    const parsed = new URL(resolved);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        throw new Error(`Unsupported protocol in Anthropic base URL: ${parsed.protocol}`);
+    }
+    return parsed.toString();
 }
 
 // Provider identity for `source` tags and `providerKind`. Widening this union is
