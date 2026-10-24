@@ -2,7 +2,7 @@ import type { ExtensionContext, AgentToolUpdateCallback } from "@earendil-works/
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { TextEncoder, TextDecoder } from "util";
 import { getConfig } from "./config.ts";
-import { getAuth, getProviderSessionHeaders } from "./auth.ts";
+import { getAuth, getProviderSessionHeaders, mergeRequestHeaders } from "./auth.ts";
 import { readSseEvents } from "./sse.ts";
 import { deriveSources, pushUniqueSearchResult, sanitizeSearchResults, titleFromUrl } from "./results.ts";
 import type { SearchResultDetail, Source, StreamResult } from "./types.ts";
@@ -106,10 +106,7 @@ export async function callGoogleStream(
     const req = config.buildRequest(model, body, auth);
 
     // Handle auth
-    Object.assign(req.headers, getProviderSessionHeaders(model, ctx) || {});
-    if (auth.headers) {
-        Object.assign(req.headers, auth.headers);
-    }
+    req.headers = mergeRequestHeaders(req.headers, getProviderSessionHeaders(model, ctx), auth.headers);
     if (auth.apiKey && model.provider !== "antigravity" && model.api !== "antigravity") {
         req.headers["x-goog-api-key"] = auth.apiKey;
     }
@@ -125,11 +122,17 @@ export async function callGoogleStream(
         throw new Error(`API error (${response.status}): ${await response.text()}`);
     }
 
+    const stream = createGoogleSearchStream(onUpdate, signal);
+    await readSseEvents(response, signal, ({ data }) => stream.onEvent(data));
+    return stream.result();
+}
+
+export function createGoogleSearchStream(onUpdate?: AgentToolUpdateCallback, signal?: AbortSignal) {
     let accumulatedText = "";
     let groundingMetadata: any;
     let urlContextMetadata: any;
 
-    await readSseEvents(response, signal, ({ data: chunk }) => {
+    const onEvent = (chunk: any) => {
         if (chunk.error) {
             const errorMsg = chunk.error.message || JSON.stringify(chunk.error);
             throw new Error(`API error (${chunk.error.code || chunk.error.status || 'unknown'}): ${errorMsg}`);
@@ -141,7 +144,8 @@ export async function callGoogleStream(
 
         if (candidate?.content?.parts) {
             for (const part of candidate.content.parts) {
-                if (part.text) {
+                // Pi's Google transport can include reasoning parts alongside answer text.
+                if (part.text && !part.thought) {
                     accumulatedText += part.text;
                     onUpdate?.({
                         content: [{ type: "text", text: accumulatedText }],
@@ -159,24 +163,27 @@ export async function callGoogleStream(
         if (candidate?.urlContextMetadata || candidate?.url_context_metadata) {
             urlContextMetadata = candidate.urlContextMetadata || candidate.url_context_metadata;
         }
-    });
-
-    const searchDetails = extractGoogleSearchDetails(groundingMetadata);
-    await resolveGoogleGroundingRedirectUrls(searchDetails.searchResults, searchDetails.citations, signal);
-    const searchResults = sanitizeSearchResults(searchDetails.searchResults);
-    const citations = sanitizeSearchResults(searchDetails.citations);
-    return {
-        text: accumulatedText || "No answer available.",
-        sources: deriveSources(searchResults, citations),
-        providerKind: "google",
-        nativeSearchUsed: searchDetails.searchQueries.length > 0 || searchResults.length > 0,
-        nativeSearchEvents: searchDetails.searchQueries.length > 0 ? ["google.groundingMetadata.webSearchQueries"] : [],
-        searchQueries: searchDetails.searchQueries,
-        searchResults,
-        citations,
-        groundingMetadata,
-        urlContextMetadata
     };
+
+    const result = async (): Promise<StreamResult> => {
+        const searchDetails = extractGoogleSearchDetails(groundingMetadata);
+        await resolveGoogleGroundingRedirectUrls(searchDetails.searchResults, searchDetails.citations, signal);
+        const searchResults = sanitizeSearchResults(searchDetails.searchResults);
+        const citations = sanitizeSearchResults(searchDetails.citations);
+        return {
+            text: accumulatedText || "No answer available.",
+            sources: deriveSources(searchResults, citations),
+            providerKind: "google",
+            nativeSearchUsed: searchDetails.searchQueries.length > 0 || searchResults.length > 0,
+            nativeSearchEvents: searchDetails.searchQueries.length > 0 ? ["google.groundingMetadata.webSearchQueries"] : [],
+            searchQueries: searchDetails.searchQueries,
+            searchResults,
+            citations,
+            groundingMetadata,
+            urlContextMetadata
+        };
+    };
+    return { onEvent, result };
 }
 
 // --- Citation Processing (byte-safe) ---

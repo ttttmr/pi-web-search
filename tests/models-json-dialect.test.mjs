@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { AuthStorage, ModelRegistry } from '@earendil-works/pi-coding-agent';
+import { ModelRegistry, ModelRuntime } from '@earendil-works/pi-coding-agent';
+import { InMemoryCredentialStore } from '@earendil-works/pi-ai';
 import { getSearchDialect } from '../src/providers/config.ts';
 
 // Canary for the models.json integration: compat.webSearchDialect is defined by this
@@ -28,7 +29,9 @@ test('compat.webSearchDialect survives the models.json loader with model-level p
       },
     }));
 
-    const registry = ModelRegistry.create(AuthStorage.inMemory(), modelsJsonPath);
+    const registry = new ModelRegistry(await ModelRuntime.create({
+      credentials: new InMemoryCredentialStore(), modelsPath: modelsJsonPath, allowModelNetwork: false,
+    }));
     assert.equal(registry.getError(), undefined);
 
     const inherited = registry.find('dialect-gateway', 'search-alias');

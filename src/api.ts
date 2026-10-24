@@ -6,6 +6,7 @@ import { callOpenAIStream } from "./providers/openai.ts";
 import { callAnthropicStream } from "./providers/anthropic.ts";
 import { callDeepSeekSearch } from "./providers/deepseek.ts";
 import { callOllamaSearch } from "./providers/ollama.ts";
+import { callVirtualSearch } from "./providers/virtual.ts";
 import type { StreamResult } from "./providers/types.ts";
 
 export { getProviderKind, getConfig } from "./providers/config.ts";
@@ -29,6 +30,10 @@ export async function callApiStream(
     const prompt = extractPromptFromGeminiBody(body);
     if (!prompt) {
         throw new Error("No prompt text found in request body");
+    }
+
+    if (kind === "virtual") {
+        return callVirtualSearch(ctx, model, prompt, onUpdate, signal, thinkingLevel, urls);
     }
 
     // Ollama and DeepSeek are reached through standalone REST search endpoints

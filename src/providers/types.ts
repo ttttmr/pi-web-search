@@ -1,4 +1,6 @@
-export type ProviderKind = "google" | "openai" | "xai" | "anthropic" | "deepseek" | "ollama" | "unsupported";
+import type { Usage } from "@earendil-works/pi-ai";
+
+export type ProviderKind = "google" | "openai" | "xai" | "anthropic" | "deepseek" | "ollama" | "virtual" | "unsupported";
 
 export interface Source {
     title: string;
@@ -29,6 +31,7 @@ export interface NativeSearchCallDetail {
 
 export interface StreamResult {
     text: string;
+    usage?: Usage;
     sources?: Source[];
     providerKind?: ProviderKind;
     nativeSearchUsed?: boolean;

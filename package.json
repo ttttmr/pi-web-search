@@ -42,9 +42,9 @@
     "test:real:url-context": "node tests/real-url-context.mjs"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^0.80.3",
-    "@earendil-works/pi-coding-agent": "^0.80.3",
-    "@earendil-works/pi-tui": "^0.80.3",
+    "@earendil-works/pi-ai": "^0.99.0",
+    "@earendil-works/pi-coding-agent": "^0.99.0",
+    "@earendil-works/pi-tui": "^0.99.0",
     "@types/node": "^25.9.1",
     "typebox": "^1.1.38",
     "typescript": "^6.0.3"
@@ -55,8 +55,8 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.80.3",
-    "@earendil-works/pi-coding-agent": ">=0.80.3",
+    "@earendil-works/pi-ai": ">=0.99.0",
+    "@earendil-works/pi-coding-agent": ">=0.99.0",
     "@earendil-works/pi-tui": "*",
     "typebox": "*"
   }

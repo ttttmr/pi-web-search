@@ -1,9 +1,9 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { Api, Model, ProviderHeaders } from "@earendil-works/pi-ai";
 import { getEnvApiKey } from "@earendil-works/pi-ai/compat";
 
 export type ResolvedAuth =
-    | { ok: true; apiKey?: string; headers?: Record<string, string>; baseUrl?: string; }
+    | { ok: true; apiKey?: string; headers?: ProviderHeaders; baseUrl?: string; }
     | { ok: false; error: string; };
 
 function getEnvAuth(model: Model<Api>): Extract<ResolvedAuth, { ok: true }> | undefined {
@@ -27,7 +27,19 @@ export async function getAuth(ctx: ExtensionContext, model: Model<Api>): Promise
     return envAuth ? { ...resolved, apiKey: envAuth.apiKey } : resolved;
 }
 
-function hasAuthHeader(headers?: Record<string, string>): boolean {
+// Match Pi's case-insensitive merging, where null removes an earlier header.
+export function mergeRequestHeaders(...sources: (ProviderHeaders | undefined)[]): Record<string, string> {
+    const merged = new Map<string, [string, string]>();
+    for (const source of sources) {
+        for (const [name, value] of Object.entries(source || {})) {
+            merged.delete(name.toLowerCase());
+            if (value !== null) merged.set(name.toLowerCase(), [name, value]);
+        }
+    }
+    return Object.fromEntries(merged.values());
+}
+
+function hasAuthHeader(headers?: ProviderHeaders): boolean {
     if (!headers) return false;
     return Object.entries(headers).some(([name, value]) => {
         if (!value) return false;
