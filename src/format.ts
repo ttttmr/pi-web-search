@@ -145,13 +145,16 @@ export function formatWebSearchResult(result: StreamResult, options: { modelId: 
     summary = appendSourcesSection(summary, sources);
     summary = appendAdditionalResultsSection(summary, additionalResults);
 
-    return formatResult(summary, buildResultDetails(
-        result,
-        sources,
-        retrieved.length > 0 ? retrieved : undefined,
-        failed,
-        options.modelId,
-    ));
+    return {
+        ...formatResult(summary, buildResultDetails(
+            result,
+            sources,
+            retrieved.length > 0 ? retrieved : undefined,
+            failed,
+            options.modelId,
+        )),
+        ...(result.usage ? { usage: result.usage } : {}),
+    };
 }
 
 export function formatUrlContextResult(result: StreamResult, options: { modelId: string }): AgentToolResult<any> {

@@ -1,6 +1,6 @@
 import type { ExtensionContext, AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { getAuth, type ResolvedAuth } from "./auth.ts";
+import { getAuth, mergeRequestHeaders, type ResolvedAuth } from "./auth.ts";
 import { deriveSources, sanitizeSearchResults, titleFromUrl } from "./results.ts";
 import type { SearchResultDetail, Source, StreamResult } from "./types.ts";
 
@@ -121,7 +121,7 @@ async function resolveDeepSeekTarget(
     const auth = await getAuth(ctx, model);
     if (!auth.ok) throw new Error(auth.error || "Failed to resolve DeepSeek credentials");
 
-    const headers: Record<string, string> = { ...(model.headers || {}), ...(auth.headers || {}) };
+    const headers = mergeRequestHeaders(model.headers, auth.headers);
     const hasAuth = Object.entries(headers).some(([name, value]) =>
         value && ["authorization", "x-api-key"].includes(name.toLowerCase()));
     const apiKey = auth.apiKey || process.env.DEEPSEEK_API_KEY;

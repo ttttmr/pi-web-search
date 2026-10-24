@@ -1,6 +1,6 @@
 import type { ExtensionContext, AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { getAuth, getProviderSessionHeaders } from "./auth.ts";
+import { getAuth, getProviderSessionHeaders, mergeRequestHeaders } from "./auth.ts";
 import { readSseEvents } from "./sse.ts";
 import {
     applyTextCitations,
@@ -13,6 +13,14 @@ import {
     titleFromUrl,
 } from "./results.ts";
 import type { NativeSearchCallDetail, SearchResultDetail, StreamResult } from "./types.ts";
+
+export const ANTHROPIC_SEARCH_TOOL = {
+    type: "web_search_20260209",
+    name: "web_search",
+    max_uses: 10,
+    // Keep direct search compatible with models without programmatic tool calling.
+    allowed_callers: ["direct"],
+};
 
 const CLAUDE_CODE_SYSTEM_PROMPT = "You are Claude Code, Anthropic's official CLI for Claude.";
 
@@ -32,7 +40,6 @@ export async function callAnthropicStream(
     onUpdate?: AgentToolUpdateCallback,
     signal?: AbortSignal
 ): Promise<StreamResult> {
-    const kind: MessagesProviderKind = "anthropic";
     const providerName = "Anthropic";
     const auth = await getAuth(ctx, model);
     if (!auth.ok) {
@@ -40,14 +47,11 @@ export async function callAnthropicStream(
     }
 
     const isOAuth = !!auth.apiKey && auth.apiKey.includes("sk-ant-oat");
-    const headers: Record<string, string> = {
+    const headers = mergeRequestHeaders({
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
         "anthropic-version": "2023-06-01",
-        ...(getProviderSessionHeaders(model, ctx) || {}),
-        ...(model.headers || {}),
-        ...(auth.headers || {}),
-    };
+    }, getProviderSessionHeaders(model, ctx), model.headers, auth.headers);
 
     if (auth.apiKey) {
         if (isOAuth) {
@@ -71,13 +75,7 @@ export async function callAnthropicStream(
         // system prompt, reporting it as an opaque 429 rate_limit_error.
         ...(isOAuth ? { system: [{ type: "text", text: CLAUDE_CODE_SYSTEM_PROMPT }] } : {}),
         messages: [{ role: "user", content: prompt }],
-        tools: [{
-            type: "web_search_20260209",
-            name: "web_search",
-            max_uses: 10,
-            // Keep direct search compatible with models without programmatic tool calling.
-            allowed_callers: ["direct"],
-        }],
+        tools: [ANTHROPIC_SEARCH_TOOL],
         stream: true,
     };
 
@@ -92,6 +90,14 @@ export async function callAnthropicStream(
         throw new Error(`${providerName} API error (${response.status}): ${await response.text()}`);
     }
 
+    const stream = createAnthropicSearchStream(onUpdate);
+    await readSseEvents(response, signal, ({ data }) => stream.onEvent(data));
+    return stream.result();
+}
+
+export function createAnthropicSearchStream(onUpdate?: AgentToolUpdateCallback) {
+    const kind: MessagesProviderKind = "anthropic";
+    const providerName = "Anthropic";
     let accumulatedText = "";
     const citations: Array<{ citedText?: string; title: string; url: string }> = [];
     const nativeSearchEvents: string[] = [];
@@ -112,7 +118,7 @@ export async function callAnthropicStream(
         });
     };
 
-    await readSseEvents(response, signal, ({ data: event }) => {
+    const onEvent = (event: any) => {
         if (event.type === "content_block_start") {
             const block = event.content_block;
             if (block?.type === "text" && block.text) {
@@ -174,32 +180,35 @@ export async function callAnthropicStream(
         } else if (event.type === "error") {
             throw new Error(event.error?.message || JSON.stringify(event.error || event));
         }
-    });
-
-    const cited = applyTextCitations(accumulatedText || "No answer available.", citations);
-    const citationDetails = citations.map((citation) => ({
-        title: citation.title || titleFromUrl(citation.url),
-        url: citation.url,
-        citedText: citation.citedText,
-        source: `${kind}.citation`,
-        type: "citation",
-        raw: citation,
-    }));
-    mergeSearchResultMetadata(searchResults, citationDetails);
-    const sanitizedSearchResults = sanitizeSearchResults(searchResults);
-    const sanitizedCitations = sanitizeSearchResults(citationDetails);
-    mergeSearchResultMetadata(sanitizedSearchResults, sanitizedCitations);
-    const derivedSources = deriveSources(sanitizedSearchResults, sanitizedCitations);
-
-    return {
-        text: cited.text,
-        sources: cited.sources.length ? normalizeCitedSources(cited.sources) : derivedSources,
-        providerKind: kind,
-        nativeSearchUsed: nativeSearchEvents.length > 0 || nativeSearchCalls.length > 0 || sanitizedSearchResults.length > 0,
-        nativeSearchEvents,
-        nativeSearchCalls,
-        searchQueries: nativeSearchCalls.flatMap((call) => call.queries || []),
-        searchResults: sanitizedSearchResults,
-        citations: sanitizedCitations,
     };
+
+    const result = (): StreamResult => {
+        const cited = applyTextCitations(accumulatedText || "No answer available.", citations);
+        const citationDetails = citations.map((citation) => ({
+            title: citation.title || titleFromUrl(citation.url),
+            url: citation.url,
+            citedText: citation.citedText,
+            source: `${kind}.citation`,
+            type: "citation",
+            raw: citation,
+        }));
+        mergeSearchResultMetadata(searchResults, citationDetails);
+        const sanitizedSearchResults = sanitizeSearchResults(searchResults);
+        const sanitizedCitations = sanitizeSearchResults(citationDetails);
+        mergeSearchResultMetadata(sanitizedSearchResults, sanitizedCitations);
+        const derivedSources = deriveSources(sanitizedSearchResults, sanitizedCitations);
+
+        return {
+            text: cited.text,
+            sources: cited.sources.length ? normalizeCitedSources(cited.sources) : derivedSources,
+            providerKind: kind,
+            nativeSearchUsed: nativeSearchEvents.length > 0 || nativeSearchCalls.length > 0 || sanitizedSearchResults.length > 0,
+            nativeSearchEvents,
+            nativeSearchCalls,
+            searchQueries: nativeSearchCalls.flatMap((call) => call.queries || []),
+            searchResults: sanitizedSearchResults,
+            citations: sanitizedCitations,
+        };
+    };
+    return { onEvent, result };
 }

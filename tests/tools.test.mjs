@@ -29,6 +29,31 @@ test('url_context rejects non-Gemini providers with a clear error', async () => 
   assert.equal(result.details.grounded, false);
 });
 
+test('virtual models do not expose or execute url_context under provider names', async (t) => {
+  t.mock.method(globalThis, 'fetch', () => assert.fail('url_context must not send a request'));
+  let activeTools = ['web_search', 'url_context'];
+  const manager = createModelScopedToolManager({
+    getActiveTools: () => [...activeTools],
+    setActiveTools: (names) => { activeTools = [...names]; },
+  });
+  for (const provider of ['google-generative-ai', 'antigravity', 'deepseek', 'ollama-cloud', 'test-router']) {
+    const model = { id: 'auto', provider, api: 'pi-virtual', baseUrl: 'https://ollama.com' };
+    manager.sync(model);
+    assert.deepEqual(activeTools, ['web_search'], provider);
+    const ctx = mockCtx('test-key', model);
+    ctx.modelRegistry.getApiKeyAndHeaders = () => assert.fail('url_context must not resolve credentials');
+    ctx.modelRegistry.streamSimple = () => assert.fail('url_context must not invoke a virtual model');
+    const result = await urlContext('test', {
+      query: 'Read this page', urls: ['https://example.test/page'],
+    }, new AbortController().signal, undefined, ctx);
+    assert.equal(result.details.error, 'unsupported_provider', provider);
+    assert.equal(result.details.providerKind, 'virtual', provider);
+
+    manager.sync({ id: 'gemini-test', provider: 'google', api: 'google-generative-ai' });
+    assert.deepEqual(activeTools, ['web_search', 'url_context']);
+  }
+});
+
 test('url_context warns when Gemini returns no verified URL context metadata', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => makeResponse([
     { data: { candidates: [{ content: { parts: [{ text: 'Plain summary without metadata' }] } }] } },
