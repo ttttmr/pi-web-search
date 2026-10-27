@@ -2,7 +2,7 @@ import type { ExtensionContext, AgentToolUpdateCallback } from "@earendil-works/
 import { clampThinkingLevel, type Api, type Model, type ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { TextDecoder } from "util";
 import { getProviderKind, getSearchDialect } from "./config.ts";
-import { getAuth, getProviderSessionHeaders, type ResolvedAuth } from "./auth.ts";
+import { getAuth, getProviderSessionHeaders, mergeRequestHeaders, type ResolvedAuth } from "./auth.ts";
 import { readSseEvents } from "./sse.ts";
 import {
     applyIndexCitations,
@@ -99,6 +99,23 @@ function extractOpenAIUrlCitation(annotation: any): { endIndex?: number; title: 
     };
 }
 
+export function getOpenAISearchOptions(model: Model<Api>) {
+    const isCodex = isOpenAICodexModel(model);
+    const isGrok = getSearchDialect(model) === "grok";
+    return {
+        tools: [{ type: "web_search" }],
+        include: isCodex || isGrok
+            ? ["web_search_call.action.sources"]
+            : ["web_search_call.action.sources", "web_search_call.results"],
+        ...(isCodex ? {
+            instructions: "Answer the user's request using web search when needed.",
+            text: { verbosity: "low" },
+            tool_choice: "required",
+            parallel_tool_calls: true,
+        } : {}),
+    };
+}
+
 export async function callOpenAIStream(
     ctx: ExtensionContext,
     model: Model<Api>,
@@ -112,10 +129,7 @@ export async function callOpenAIStream(
         throw new Error(auth.error || "Failed to get API key and headers");
     }
 
-    const headers = new Headers();
-    for (const [name, value] of Object.entries(getProviderSessionHeaders(model, ctx) || {})) headers.set(name, value);
-    for (const [name, value] of Object.entries(model.headers || {})) headers.set(name, value);
-    for (const [name, value] of Object.entries(auth.headers || {})) headers.set(name, value);
+    const headers = new Headers(mergeRequestHeaders(getProviderSessionHeaders(model, ctx), model.headers, auth.headers));
     if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
     if (!headers.has("Accept")) headers.set("Accept", "text/event-stream");
     if (auth.apiKey && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${auth.apiKey}`);
@@ -141,8 +155,6 @@ export async function callOpenAIStream(
     // Dialect shapes the wire format only (input, include, citations); labels,
     // providerKind, and reasoning stay keyed to provider identity.
     const isGrok = getSearchDialect(model) === "grok";
-    const searchProvider: "xai" | "openai" = isXai ? "xai" : "openai";
-    const providerSourceName = isXai ? "xai" : "openai";
     const requestBody: any = {
         model: model.id,
         input: isCodex
@@ -150,10 +162,7 @@ export async function callOpenAIStream(
             : isGrok
                 ? [{ role: "user", content: prompt }]
                 : [{ role: "user", content: [{ type: "input_text", text: prompt }] }],
-        tools: [{ type: "web_search" }],
-        ...(isCodex || isGrok
-            ? { include: ["web_search_call.action.sources"] }
-            : { include: ["web_search_call.action.sources", "web_search_call.results"] }),
+        ...getOpenAISearchOptions(model),
         stream: true,
         store: false,
     };
@@ -167,13 +176,6 @@ export async function callOpenAIStream(
         const effort = model.thinkingLevelMap?.[level] ?? level;
         if (level !== "off") requestBody.reasoning = { effort };
     }
-    if (isCodex) {
-        requestBody.instructions = "Answer the user's request using web search when needed.";
-        requestBody.text = { verbosity: "low" };
-        requestBody.tool_choice = "required";
-        requestBody.parallel_tool_calls = true;
-    }
-
     const baseUrl = resolveGitHubCopilotBaseUrl(model, auth);
     const response = await fetch(resolveOpenAIResponsesUrl(model, baseUrl), {
         method: "POST",
@@ -186,6 +188,17 @@ export async function callOpenAIStream(
         throw new Error(`${isXai ? "xAI" : "OpenAI"} API error (${response.status}): ${await response.text()}`);
     }
 
+    const stream = createOpenAISearchStream(model, onUpdate);
+    await readSseEvents(response, signal, ({ data }) => stream.onEvent(data));
+    return stream.result();
+}
+
+export function createOpenAISearchStream(model: Model<Api>, onUpdate?: AgentToolUpdateCallback) {
+    const isCodex = isOpenAICodexModel(model);
+    const isXai = getProviderKind(model) === "xai";
+    const isGrok = getSearchDialect(model) === "grok";
+    const searchProvider: "xai" | "openai" = isXai ? "xai" : "openai";
+    const providerSourceName = isXai ? "xai" : "openai";
     let accumulatedText = "";
     const citations: Array<{ endIndex?: number; title: string; url: string }> = [];
     const nativeSearchEvents: string[] = [];
@@ -262,7 +275,7 @@ export async function callOpenAIStream(
         }
     };
 
-    await readSseEvents(response, signal, ({ data: event }) => {
+    const onEvent = (event: any) => {
         if (event.type === "error" || event.type === "response.failed") {
             const message = event.message || event.error?.message || event.response?.error?.message;
             throw new Error(message || JSON.stringify(event.error || event.response?.error || event));
@@ -294,34 +307,37 @@ export async function callOpenAIStream(
                 });
             }
         }
-    });
-
-    const cited = isGrok
-        ? preserveInlineCitations(accumulatedText || "No answer available.", citations)
-        : applyIndexCitations(accumulatedText || "No answer available.", citations);
-    const citationDetails = citations.map((citation) => ({
-        title: citation.title,
-        url: citation.url,
-        source: `${providerSourceName}.url_citation`,
-        type: "citation",
-        raw: citation,
-    }));
-    for (const citation of citationDetails) pushUniqueSearchResult(searchResults, citation);
-    mergeSearchResultMetadata(searchResults, citationDetails);
-    const sanitizedSearchResults = sanitizeSearchResults(searchResults);
-    const sanitizedCitations = sanitizeSearchResults(citationDetails);
-    mergeSearchResultMetadata(sanitizedSearchResults, sanitizedCitations);
-    const derivedSources = deriveSources(sanitizedSearchResults, sanitizedCitations);
-
-    return {
-        text: cited.text,
-        sources: cited.sources.length ? normalizeCitedSources(cited.sources) : derivedSources,
-        providerKind: searchProvider,
-        nativeSearchUsed: nativeSearchEvents.length > 0 || nativeSearchCalls.length > 0 || sanitizedSearchResults.length > 0,
-        nativeSearchEvents,
-        nativeSearchCalls,
-        searchQueries,
-        searchResults: sanitizedSearchResults,
-        citations: sanitizedCitations,
     };
+
+    const result = (): StreamResult => {
+        const cited = isGrok
+            ? preserveInlineCitations(accumulatedText || "No answer available.", citations)
+            : applyIndexCitations(accumulatedText || "No answer available.", citations);
+        const citationDetails = citations.map((citation) => ({
+            title: citation.title,
+            url: citation.url,
+            source: `${providerSourceName}.url_citation`,
+            type: "citation",
+            raw: citation,
+        }));
+        for (const citation of citationDetails) pushUniqueSearchResult(searchResults, citation);
+        mergeSearchResultMetadata(searchResults, citationDetails);
+        const sanitizedSearchResults = sanitizeSearchResults(searchResults);
+        const sanitizedCitations = sanitizeSearchResults(citationDetails);
+        mergeSearchResultMetadata(sanitizedSearchResults, sanitizedCitations);
+        const derivedSources = deriveSources(sanitizedSearchResults, sanitizedCitations);
+
+        return {
+            text: cited.text,
+            sources: cited.sources.length ? normalizeCitedSources(cited.sources) : derivedSources,
+            providerKind: searchProvider,
+            nativeSearchUsed: nativeSearchEvents.length > 0 || nativeSearchCalls.length > 0 || sanitizedSearchResults.length > 0,
+            nativeSearchEvents,
+            nativeSearchCalls,
+            searchQueries,
+            searchResults: sanitizedSearchResults,
+            citations: sanitizedCitations,
+        };
+    };
+    return { onEvent, result };
 }

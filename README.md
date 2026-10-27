@@ -39,6 +39,8 @@ When using `google-generative-ai`, YouTube URLs are passed as `file_data` for na
 
 ## Install
 
+Requires Pi 0.99.0 or newer.
+
 ```bash
 pi install npm:pi-web-search
 ```
@@ -63,6 +65,12 @@ For OpenAI Responses models (including Azure, Codex, and Copilot), `web_search` 
 When thinking is off or unavailable, or the search model is non-reasoning, the request omits `reasoning` and leaves the choice to the provider. Off does not force reasoning off: some models reject `reasoning.effort: "none"`. Google, Anthropic, xAI, and Ollama behavior is unchanged.
 
 `url_context` is automatically removed from active tools when using a model that supports neither Gemini URL Context nor the Ollama/DeepSeek fetch endpoints.
+
+### Virtual models
+
+Select a Pi virtual model for `web_search`. The model chosen by Pi must use OpenAI Responses (including Azure, Codex and xAI), Anthropic Messages, or Google Gemini.
+
+`url_context` is not available for virtual models.
 
 ### DeepSeek
 

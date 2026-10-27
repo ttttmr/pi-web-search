@@ -84,6 +84,8 @@ function isOllamaModel(model: Model<Api>): boolean {
 }
 
 export function getProviderKind(model: Model<Api>): ProviderKind {
+    // Virtual models expose their search protocol only after Pi routes the request.
+    if (model.api === "pi-virtual") return "virtual";
     if (model.provider === "deepseek") return "deepseek";
     if (model.provider === "antigravity" || model.api === "antigravity") return "google";
     if (GOOGLE_PROVIDERS[model.provider] || GOOGLE_PROVIDERS[model.api]) return "google";
@@ -122,8 +124,8 @@ export function getSearchDialect(model: Model<Api>): SearchDialect {
 }
 
 export function getConfig(model: Model<Api>): ProviderConfig {
-    const googleConfig = GOOGLE_PROVIDERS[model.provider] || GOOGLE_PROVIDERS[model.api];
-    if (googleConfig) return googleConfig;
     const kind = getProviderKind(model);
-    return { kind };
+    if (kind === "virtual") return { kind };
+    const googleConfig = GOOGLE_PROVIDERS[model.provider] || GOOGLE_PROVIDERS[model.api];
+    return googleConfig || { kind };
 }
