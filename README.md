@@ -62,15 +62,17 @@ When this file exists, `web_search` uses the configured provider/model first. If
 
 For OpenAI Responses models (including Azure, Codex, and Copilot), `web_search` inherits the agent's current thinking level on each call. Enabled levels are clamped to the selected search model's supported levels and translated through its `thinkingLevelMap` using pi's model metadata. This also applies when `web-search.json` selects a dedicated search model. Higher effort can increase latency and cost.
 
-To search at a fixed level instead, add `thinking` to `web-search.json`. It replaces the inherited level for every search and goes through the same clamping and mapping; `"off"` omits `reasoning`. Valid values: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. Like the inherited level, it only affects OpenAI Responses models.
+To use a fixed search thinking level instead of inheriting the conversation's level, add `thinking` to `web-search.json`:
 
 ```json
 {
-  "provider": "openai-codex",
-  "model": "gpt-6-luna",
+  "provider": "openai",
+  "model": "gpt-5.1",
   "thinking": "low"
 }
 ```
+
+Valid values are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Unsupported levels are adjusted using Pi's `clampThinkingLevel()` and the search model's own capabilities. Omitting `thinking` keeps the inherited level; invalid values return a config error before any request is sent. The file is read on each search, so changes take effect without restarting Pi.
 
 When thinking is off or unavailable, or the search model is non-reasoning, the request omits `reasoning` and leaves the choice to the provider. Off does not force reasoning off: some models reject `reasoning.effort: "none"`. Google, Anthropic, xAI, and Ollama behavior is unchanged.
 
@@ -78,7 +80,7 @@ When thinking is off or unavailable, or the search model is non-reasoning, the r
 
 ### Virtual models
 
-Select a Pi virtual model for `web_search`. The model chosen by Pi must use OpenAI Responses (including Azure, Codex and xAI), Anthropic Messages, or Google Gemini.
+Select a Pi virtual model for `web_search`. The model chosen by Pi must use OpenAI Responses (including Azure, Codex and xAI), Anthropic Messages, or Google Gemini. The configured `thinking` level (or the inherited conversation level when omitted) is forwarded to Pi, which handles thinking capabilities after selecting the concrete model.
 
 `url_context` is not available for virtual models.
 

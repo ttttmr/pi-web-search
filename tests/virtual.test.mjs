@@ -59,6 +59,27 @@ for (const api of ['openai-responses', 'azure-openai-responses', 'openai-codex-r
   });
 }
 
+test('configured thinking reaches Pi virtual routing without clamping against the virtual model', async () => {
+  for (const [thinking, expected] of [['low', 'low'], ['max', 'max'], ['off', undefined], [undefined, 'high']]) {
+    let requests = 0;
+    const ctx = virtualCtx(async (_context, options) => {
+      requests++;
+      assert.equal(options.reasoning, expected);
+      const target = { id: 'search-model', provider: 'test-provider', api: 'openai-responses' };
+      await options.onPayload({}, target);
+      await options.onProviderStreamEvent({ type: 'response.output_text.delta', delta: 'Search answer' }, target);
+      return { stopReason: 'stop' };
+    });
+    ctx.model = undefined;
+    await withWebSearchConfig({ provider: model.provider, model: model.id, thinking }, async () => {
+      const result = await webSearch('test', { query: 'query' }, new AbortController().signal, undefined, ctx, 'high');
+      assert.equal(result.details.error, undefined, result.content[0].text);
+      assert.match(result.content[0].text, /Search answer/);
+    });
+    assert.equal(requests, 1);
+  }
+});
+
 test('virtual search discards results from a previous provider attempt', async () => {
   const ctx = virtualCtx(async (_context, options) => {
     const target = { id: 'search-model', provider: 'test-provider', api: 'openai-codex-responses' };
