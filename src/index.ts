@@ -70,7 +70,7 @@ export default function (pi: ExtensionAPI) {
         description: "Search the web using the current supported provider (Google Gemini, xAI Grok, OpenAI, Anthropic, DeepSeek, Ollama, or OpenCode Zen/Go). Optionally include URLs to analyze alongside search results.",
         parameters: WebSearchSchema,
         execute: (id, params, signal = new AbortController().signal, onUpdate, ctx): Promise<AgentToolResult<any>> =>
-            webSearch(id, params, signal, onUpdate, ctx, pi.getThinkingLevel()),
+            webSearch(id, params, signal, onUpdate, ctx),
         renderCall(args, theme) {
             const query = args.query || "…";
             const urlCount = args.urls?.length ?? 0;

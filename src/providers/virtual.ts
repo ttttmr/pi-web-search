@@ -3,7 +3,7 @@ import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { getProviderKind } from "./config.ts";
 import { ANTHROPIC_SEARCH_TOOL, createAnthropicSearchStream } from "./anthropic.ts";
 import { createGoogleSearchStream } from "./google.ts";
-import { createOpenAISearchStream, getOpenAISearchOptions } from "./openai.ts";
+import { createOpenAISearchStream, getOpenAISearchOptions, getOpenAISearchReasoning } from "./openai.ts";
 import type { StreamResult } from "./types.ts";
 
 export async function callVirtualSearch(
@@ -29,6 +29,12 @@ export async function callVirtualSearch(
                 stream = createOpenAISearchStream(target, onUpdate);
                 const request = { ...payload, ...getOpenAISearchOptions(target), store: false };
                 if (kind === "xai") delete request.reasoning;
+                else if (thinkingLevel === undefined) {
+                    // Resolve the minimum after routing, using this attempt's concrete model.
+                    const reasoning = getOpenAISearchReasoning(target);
+                    if (reasoning) request.reasoning = reasoning;
+                    else delete request.reasoning;
+                }
                 return request;
             }
             if (kind === "anthropic") {

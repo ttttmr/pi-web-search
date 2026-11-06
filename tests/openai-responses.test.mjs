@@ -11,22 +11,30 @@ for (const [provider, api, baseUrl, apiKey] of [
   ['azure-openai', 'azure-openai-responses', 'https://example-resource.cognitiveservices.azure.com/openai/v1', 'test-key'],
   ['github-copilot', 'openai-responses', 'https://api.individual.githubcopilot.com', 'test-key'],
 ]) {
-  test(`${provider} web search leaves reasoning effort to the provider default`, async (t) => {
-    let requestCount = 0;
+  test(`${provider} web search selects the minimum without sending unsupported none`, async (t) => {
+    const bodies = [];
     t.mock.method(globalThis, 'fetch', async (_url, init) => {
-      requestCount++;
       const body = JSON.parse(init.body);
-      assert.equal(Object.hasOwn(body, 'reasoning'), false);
+      bodies.push(body);
       assert.deepEqual(body.tools, [{ type: 'web_search' }]);
       return makeMinimalOpenAIResponse();
     });
 
-    for (const reasoning of [true, false]) {
+    for (const [reasoning, thinkingLevelMap, thinking] of [
+      [true, { off: 'none' }, undefined],
+      [true, { off: null, minimal: null }, undefined],
+      [false, {}, undefined],
+      [true, { off: 'none' }, 'off'],
+      [true, Object.fromEntries(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map(level => [level, null])), undefined],
+    ]) {
       await callApiStream(mockCtx(apiKey), {
-        id: 'gpt-6-astra', provider, api, baseUrl, reasoning, headers: {},
-      }, { contents: [{ parts: [{ text: 'Search OpenAI docs' }] }] });
+        id: 'search-model', provider, api, baseUrl, reasoning, thinkingLevelMap, headers: {},
+      }, { contents: [{ parts: [{ text: 'Search OpenAI docs' }] }] }, undefined, undefined, thinking);
     }
-    assert.equal(requestCount, 2);
+    assert.equal(bodies.length, 5);
+    assert.deepEqual(bodies.map((body) => body.reasoning), [
+      { effort: 'none' }, { effort: 'low' }, undefined, undefined, undefined,
+    ]);
   });
 }
 

@@ -20,7 +20,7 @@ function response() {
 }
 
 for (const api of ['openai-responses', 'azure-openai-responses', 'openai-codex-responses']) {
-  test(`${api} inherits enabled effort and preserves safe defaults`, async (t) => {
+  test(`${api} respects explicit effort and preserves safe defaults`, async (t) => {
     let body;
     t.mock.method(globalThis, 'fetch', async (_url, init) => {
       body = JSON.parse(init.body);
@@ -29,7 +29,7 @@ for (const api of ['openai-responses', 'azure-openai-responses', 'openai-codex-r
     const selected = { ...model, api, headers: { 'chatgpt-account-id': 'test-account' } };
     for (const [level, expected] of [
       ['low', 'low'], ['medium', 'medium'], ['high', 'high'], ['xhigh', 'xhigh'],
-      ['minimal', 'low'], ['off', undefined], [undefined, undefined],
+      ['minimal', 'low'], ['off', undefined], [undefined, 'low'],
     ]) {
       await callApiStream(ctx, selected, prompt, undefined, undefined, level);
       assert.deepEqual(body.reasoning, expected ? { effort: expected } : undefined);
@@ -81,7 +81,7 @@ test('native xAI Grok omits effort regardless of dialect override', async (t) =>
   assert.equal(Object.hasOwn(body, 'reasoning'), false);
 });
 
-test('registered tool reads the current agent thinking level on every invocation', async (t) => {
+test('registered search uses the model minimum regardless of the session thinking level', async (t) => {
   let level = 'medium';
   let tool;
   const efforts = [];
@@ -107,14 +107,14 @@ test('registered tool reads the current agent thinking level on every invocation
       assert.equal(result.details.error, undefined);
       assert.equal(signals.at(-1), signal);
     }
-    assert.deepEqual(efforts, ['medium', 'high', undefined]);
+    assert.deepEqual(efforts, ['low', 'low', 'low']);
 
     // A dedicated model must use its own capabilities, not the caller's map.
     await writeFile(configPath,
       JSON.stringify({ provider: 'github-copilot', model: 'dedicated-search' }));
     const dedicated = {
       ...model, provider: 'github-copilot', id: 'dedicated-search',
-      thinkingLevelMap: { high: 'medium' },
+      thinkingLevelMap: { off: null, minimal: null, low: null, medium: 'provider-minimum' },
     };
     const dedicatedCtx = mockCtx('test-key', model, undefined, undefined, {
       find(provider, id) {
@@ -128,13 +128,13 @@ test('registered tool reads the current agent thinking level on every invocation
       undefined, undefined, dedicatedCtx);
     assert.equal(result.details.error, undefined);
     assert.equal(result.details.model, 'dedicated-search');
-    assert.equal(efforts.at(-1), 'medium');
+    assert.equal(efforts.at(-1), 'provider-minimum');
     assert.ok(signals.at(-1) instanceof AbortSignal);
     assert.equal(signals.at(-1).aborted, false);
   });
 });
 
-test('configured search thinking overrides the session and uses the search model capabilities', async (t) => {
+test('configured search thinking takes precedence over the model minimum', async (t) => {
   let tool;
   const efforts = [];
   t.mock.method(globalThis, 'fetch', async (_url, init) => {
@@ -143,7 +143,7 @@ test('configured search thinking overrides the session and uses the search model
   });
   registerExtension({
     registerTool(value) { if (value.name === 'web_search') tool = value; },
-    getThinkingLevel() { return 'high'; },
+    getThinkingLevel() { assert.fail('search must not read the session thinking level'); },
     getActiveTools() { return []; }, setActiveTools() {}, on() {},
   });
   const dedicated = {
@@ -153,7 +153,7 @@ test('configured search thinking overrides the session and uses the search model
   const searchCtx = mockCtx('test-key', model, undefined, undefined, { models: [dedicated] });
   await withWebSearchConfig(null, async (configPath) => {
     for (const [thinking, expected] of [
-      [undefined, 'medium'], ['low', 'low'], ['minimal', 'low'], ['medium', 'medium'],
+      [undefined, 'low'], ['low', 'low'], ['minimal', 'low'], ['medium', 'medium'],
       ['high', 'medium'], ['xhigh', 'provider-max'], ['max', 'provider-max'], ['off', undefined],
     ]) {
       await writeFile(configPath, JSON.stringify({ provider: dedicated.provider, model: dedicated.id, thinking }));
@@ -166,6 +166,30 @@ test('configured search thinking overrides the session and uses the search model
   });
 });
 
+test('unconfigured search chooses the lowest supported level, including none', async (t) => {
+  const bodies = [];
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    bodies.push(JSON.parse(init.body));
+    return response();
+  });
+  await withWebSearchConfig(null, async () => {
+    for (const [selected, expected] of [
+      [{ ...model, thinkingLevelMap: {} }, 'none'],
+      [{ ...model, thinkingLevelMap: { off: 'none' } }, 'none'],
+      [{ ...model, thinkingLevelMap: { off: null } }, 'minimal'],
+      [model, 'low'],
+      [{ ...model, thinkingLevelMap: { off: null, minimal: null, low: null, medium: null } }, 'high'],
+      [{ ...model, reasoning: false }, undefined],
+    ]) {
+      const result = await webSearch('test', { query: 'query' }, new AbortController().signal,
+        undefined, mockCtx('test-key', selected));
+      assert.equal(result.details.error, undefined, result.content[0].text);
+      assert.equal(bodies.at(-1).reasoning?.effort, expected);
+    }
+  });
+  assert.equal(bodies.length, 6);
+});
+
 test('configured search thinking clamps max to a supported level and preserves non-reasoning defaults', async (t) => {
   const bodies = [];
   t.mock.method(globalThis, 'fetch', async (_url, init) => {
@@ -176,7 +200,7 @@ test('configured search thinking clamps max to a supported level and preserves n
   await withWebSearchConfig({ provider: model.provider, model: model.id, thinking: 'max' }, async () => {
     for (const reasoning of [true, false]) {
       const result = await webSearch('test', { query: 'query' }, new AbortController().signal,
-        undefined, mockCtx('test-key', { ...selected, reasoning }), 'low');
+        undefined, mockCtx('test-key', { ...selected, reasoning }));
       assert.equal(result.details.error, undefined, result.content[0].text);
     }
   });
@@ -189,7 +213,7 @@ test('invalid search thinking returns a config error before making a request', a
   t.mock.method(globalThis, 'fetch', async () => assert.fail('invalid config must not send a request'));
   for (const thinking of ['fast', '', 'LOW', 'toString', '__proto__', null, 1, true, [], {}]) {
     await withWebSearchConfig({ provider: model.provider, model: model.id, thinking }, async () => {
-      const result = await webSearch('test', { query: 'query' }, new AbortController().signal, undefined, ctx, 'high');
+      const result = await webSearch('test', { query: 'query' }, new AbortController().signal, undefined, ctx);
       assert.equal(result.details.error, 'invalid_config', `thinking=${JSON.stringify(thinking)}`);
       assert.match(result.content[0].text, /Invalid thinking level/);
     });

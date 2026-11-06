@@ -25,7 +25,7 @@ GitHub Copilot OpenAI Responses models are supported, including Business and Ent
 
 OpenCode Zen and OpenCode Go Responses models (for example `opencode-go/gpt-5.6-luna` or `opencode-go/grok-4.6`) use the same Responses web search. OpenCode routes traffic per conversation, so `web_search` sends the `x-opencode-session` and `x-opencode-client` headers pi uses, keyed to the active session. Only models exposed through that Responses API are supported: OpenCode `chat/completions` models have no provider-native search tool, and the gateway's Anthropic Messages models are unverified. Grok ids such as `opencode-go/grok-4.6` get the Grok request shape described below unless `compat.webSearchDialect` is `"openai"`; the session headers are unchanged.
 
-Grok models on OpenAI-compatible Responses gateways use Grok's request shape: no `web_search_call.results` include (Grok rejects it with 400), a message-array input, and inline citations. By default this applies to the native `xai` provider and to any model id starting with `grok-`, `grok.`, or equal to `grok`. Set `"compat": { "webSearchDialect": "grok" }` or `"openai"` in `models.json` to override detection, on the model or on a provider that serves only Grok; model-level `compat` wins over provider-level. Only the request shape changes: auth, error labels, and `providerKind` still follow the provider, and gateway Grok still inherits the session thinking level. Only the native `xai` provider omits `reasoning.effort`.
+Grok models on OpenAI-compatible Responses gateways use Grok's request shape: no `web_search_call.results` include (Grok rejects it with 400), a message-array input, and inline citations. By default this applies to the native `xai` provider and to any model id starting with `grok-`, `grok.`, or equal to `grok`. Set `"compat": { "webSearchDialect": "grok" }` or `"openai"` in `models.json` to override detection, on the model or on a provider that serves only Grok; model-level `compat` wins over provider-level. Only the request shape changes: auth, error labels, and `providerKind` still follow the provider, and gateway Grok uses the configured search thinking level or the model's lowest supported level by default. Only the native `xai` provider omits `reasoning.effort`.
 
 Ollama Cloud models (provider `ollama-cloud` or any model hosted on `ollama.com`) call Ollama's standalone web search API rather than a model tool. Auth is `OLLAMA_API_KEY` or `/login ollama-cloud`. Any `urls` are fetched through `web_fetch`. A local Ollama daemon is out of scope — the official `@ollama/pi-web-search` package covers its `/api/experimental/*` endpoints.
 
@@ -60,9 +60,9 @@ No extra config needed. Select a supported current model in pi and the tools aut
 
 When this file exists, `web_search` uses the configured provider/model first. If it is missing, `web_search` uses the current conversation model. If the selected model does not support native search, the tool returns an error instead of falling back.
 
-For OpenAI Responses models (including Azure, Codex, and Copilot), `web_search` inherits the agent's current thinking level on each call. Enabled levels are clamped to the selected search model's supported levels and translated through its `thinkingLevelMap` using pi's model metadata. This also applies when `web-search.json` selects a dedicated search model. Higher effort can increase latency and cost.
+For OpenAI Responses models (including Azure, Codex, and Copilot), `web_search` defaults to the selected search model's lowest supported thinking level, independently of the conversation's thinking level. Pi's `clampThinkingLevel()` starts at `off` and uses the model's `thinkingLevelMap`: models that support disabling reasoning receive `reasoning.effort: "none"` (or their mapped value); models that mark `off` unsupported use their lowest enabled level, such as `minimal` or `low`. This also applies when `web-search.json` selects a dedicated search model. Higher effort can increase latency and cost.
 
-To use a fixed search thinking level instead of inheriting the conversation's level, add `thinking` to `web-search.json`:
+To override the minimum default, add `thinking` to `web-search.json`:
 
 ```json
 {
@@ -72,15 +72,15 @@ To use a fixed search thinking level instead of inheriting the conversation's le
 }
 ```
 
-Valid values are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Unsupported levels are adjusted using Pi's `clampThinkingLevel()` and the search model's own capabilities. Omitting `thinking` keeps the inherited level; invalid values return a config error before any request is sent. The file is read on each search, so changes take effect without restarting Pi.
+Valid values are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Unsupported levels are adjusted using Pi's `clampThinkingLevel()` and the search model's own capabilities. Omitting `thinking` selects the model's lowest supported level, including disabled reasoning when supported; invalid values return a config error before any request is sent. The file is read on each search, so changes take effect without restarting Pi.
 
-When thinking is off or unavailable, or the search model is non-reasoning, the request omits `reasoning` and leaves the choice to the provider. Off does not force reasoning off: some models reject `reasoning.effort: "none"`. Google, Anthropic, xAI, and Ollama behavior is unchanged.
+An explicit `"thinking": "off"` keeps its existing behavior: the request omits `reasoning` and leaves the choice to the provider. It does not force `"none"`, which some models reject. Non-reasoning models also omit `reasoning`. Google, Anthropic, xAI, and Ollama direct-request behavior is unchanged.
 
 `url_context` is automatically removed from active tools when using a model that supports neither Gemini URL Context nor the Ollama/DeepSeek fetch endpoints.
 
 ### Virtual models
 
-Select a Pi virtual model for `web_search`. The model chosen by Pi must use OpenAI Responses (including Azure, Codex and xAI), Anthropic Messages, or Google Gemini. The configured `thinking` level (or the inherited conversation level when omitted) is forwarded to Pi, which handles thinking capabilities after selecting the concrete model.
+Select a Pi virtual model for `web_search`. The model chosen by Pi must use OpenAI Responses (including Azure, Codex and xAI), Anthropic Messages, or Google Gemini. The configured `thinking` level is forwarded to Pi. When omitted, the minimum is resolved after routing to the concrete model, including `none` for OpenAI Responses models that support it.
 
 `url_context` is not available for virtual models.
 

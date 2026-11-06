@@ -23,7 +23,7 @@ for (const api of ['openai-responses', 'azure-openai-responses', 'openai-codex-r
     const updates = [];
     const ctx = virtualCtx(async (context, options) => {
       assert.equal(options.signal, signal);
-      assert.equal(options.reasoning, 'high');
+      assert.equal(options.reasoning, undefined);
       assert.equal(options.sessionId, 'test-session');
       assert.equal(options.transport, 'sse');
       assert.match(context.messages[0].content, /https:\/\/example.test\/source/);
@@ -46,7 +46,7 @@ for (const api of ['openai-responses', 'azure-openai-responses', 'openai-codex-r
     });
     const result = await webSearch('test', {
       query: 'Search documentation', urls: ['https://example.test/source'],
-    }, signal, (update) => updates.push(update), ctx, 'high');
+    }, signal, (update) => updates.push(update), ctx);
     assert.equal(result.details.error, undefined, result.content[0].text);
     assert.match(result.content[0].text, /Search answer/);
     assert.doesNotMatch(JSON.stringify([result.content, updates]), /Reasoning summary/);
@@ -60,7 +60,7 @@ for (const api of ['openai-responses', 'azure-openai-responses', 'openai-codex-r
 }
 
 test('configured thinking reaches Pi virtual routing without clamping against the virtual model', async () => {
-  for (const [thinking, expected] of [['low', 'low'], ['max', 'max'], ['off', undefined], [undefined, 'high']]) {
+  for (const [thinking, expected] of [['low', 'low'], ['max', 'max'], ['off', undefined], [undefined, undefined]]) {
     let requests = 0;
     const ctx = virtualCtx(async (_context, options) => {
       requests++;
@@ -72,12 +72,35 @@ test('configured thinking reaches Pi virtual routing without clamping against th
     });
     ctx.model = undefined;
     await withWebSearchConfig({ provider: model.provider, model: model.id, thinking }, async () => {
-      const result = await webSearch('test', { query: 'query' }, new AbortController().signal, undefined, ctx, 'high');
+      const result = await webSearch('test', { query: 'query' }, new AbortController().signal, undefined, ctx);
       assert.equal(result.details.error, undefined, result.content[0].text);
       assert.match(result.content[0].text, /Search answer/);
     });
     assert.equal(requests, 1);
   }
+});
+
+test('virtual search defaults to each concrete model minimum, including none', async () => {
+  const ctx = virtualCtx(async (_context, options) => {
+    assert.equal(options.reasoning, undefined);
+    for (const [target, expected] of [
+      [{ reasoning: true, thinkingLevelMap: { off: 'none' } }, { effort: 'none' }],
+      [{ reasoning: true, thinkingLevelMap: { off: null, minimal: null } }, { effort: 'low' }],
+      [{ reasoning: true, thinkingLevelMap: Object.fromEntries(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map(level => [level, null])) }, undefined],
+      [{ reasoning: false }, undefined],
+      [{ reasoning: true, provider: 'xai' }, undefined],
+    ]) {
+      const payload = await options.onPayload({ reasoning: { effort: 'high', summary: 'auto' } }, {
+        id: 'search-model', provider: 'test-provider', api: 'openai-responses', ...target,
+      });
+      assert.deepEqual(payload.reasoning, expected);
+      await options.onProviderStreamEvent({ type: 'response.output_text.delta', delta: 'Search answer' });
+    }
+    return { stopReason: 'stop' };
+  });
+  const result = await webSearch('test', { query: 'query' }, new AbortController().signal, undefined, ctx);
+  assert.equal(result.details.error, undefined, result.content[0].text);
+  assert.match(result.content[0].text, /Search answer/);
 });
 
 test('virtual search discards results from a previous provider attempt', async () => {

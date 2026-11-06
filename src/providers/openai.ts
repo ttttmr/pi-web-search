@@ -116,6 +116,15 @@ export function getOpenAISearchOptions(model: Model<Api>) {
     };
 }
 
+/** Resolve web search reasoning from model metadata; explicit off keeps provider defaults. */
+export function getOpenAISearchReasoning(model: Model<Api>, thinkingLevel?: ModelThinkingLevel): { effort: string } | undefined {
+    if (getProviderKind(model) === "xai" || !model.reasoning || thinkingLevel === "off") return undefined;
+    const level = clampThinkingLevel(model, thinkingLevel ?? "off");
+    const mapped = model.thinkingLevelMap?.[level];
+    if (mapped === null) return undefined;
+    return { effort: mapped ?? (level === "off" ? "none" : level) };
+}
+
 export async function callOpenAIStream(
     ctx: ExtensionContext,
     model: Model<Api>,
@@ -166,16 +175,10 @@ export async function callOpenAIStream(
         stream: true,
         store: false,
     };
-    // Inherit the live session setting, clamped/mapped for the selected search
-    // model (which can differ from the conversation model). Keep provider defaults
-    // when thinking is off/unavailable; do not reintroduce an implicit "none".
-    // xAI shares this transport but does not share OpenAI's effort semantics.
-    // Keyed to provider identity, not dialect: gateway-hosted Grok keeps effort.
-    if (!isXai && model.reasoning && thinkingLevel && thinkingLevel !== "off") {
-        const level = clampThinkingLevel(model, thinkingLevel);
-        const effort = model.thinkingLevelMap?.[level] ?? level;
-        if (level !== "off") requestBody.reasoning = { effort };
-    }
+    // The default starts at off: Pi excludes it for models that cannot disable
+    // reasoning, then clamps up to their lowest supported enabled level.
+    const reasoning = getOpenAISearchReasoning(model, thinkingLevel);
+    if (reasoning) requestBody.reasoning = reasoning;
     const baseUrl = resolveGitHubCopilotBaseUrl(model, auth);
     const response = await fetch(resolveOpenAIResponsesUrl(model, baseUrl), {
         method: "POST",

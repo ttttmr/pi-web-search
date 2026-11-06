@@ -1,5 +1,4 @@
 import type { ExtensionContext, AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
-import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { Type, type Static } from "typebox";
 import { callApiStream, getConfig } from "./api.ts";
 import { formatWebSearchResult } from "./format.ts";
@@ -19,8 +18,7 @@ export async function webSearch(
     params: WebSearchInput, 
     signal: AbortSignal,
     onUpdate: AgentToolUpdateCallback | undefined, 
-    ctx: ExtensionContext,
-    thinkingLevel?: ModelThinkingLevel
+    ctx: ExtensionContext
 ) {
     const resolved = await resolveWebSearchModel(ctx);
     if (resolved.status !== "ok") return webSearchModelError(ctx, resolved);
@@ -60,7 +58,7 @@ export async function webSearch(
         const result = await callApiStream(ctx, model, {
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             ...(tools ? { tools } : {})
-        }, onUpdate, signal, resolved.thinkingLevel ?? thinkingLevel, params.urls);
+        }, onUpdate, signal, resolved.thinkingLevel, params.urls);
 
         return formatWebSearchResult(result, { modelId: model.id });
     } catch (e: any) {
