@@ -18,9 +18,11 @@ function isWebSearchThinkingLevel(value: unknown): value is ModelThinkingLevel {
 
 const SUPPORTED_PROVIDERS = ["deepseek", "google-generative-ai", "antigravity", "xai", "openai-responses", "azure-openai-responses", "openai-codex-responses", "anthropic-messages", "ollama"];
 
+export type WebSearchModelMode = "always" | "fallback";
+
 type WebSearchModelConfig =
     | { status: "missing"; path: string; }
-    | { status: "configured"; path: string; provider: string; modelId: string; thinkingLevel?: ModelThinkingLevel; }
+    | { status: "configured"; path: string; provider: string; modelId: string; mode: WebSearchModelMode; thinkingLevel?: ModelThinkingLevel; }
     | { status: "invalid"; path: string; error: string; };
 
 function isSupportedSearchModel(model: Model<Api> | undefined): model is Model<Api> {
@@ -71,7 +73,12 @@ function readWebSearchModelConfig(): WebSearchModelConfig {
         return { status: "invalid", path, error: `Invalid thinking level: ${JSON.stringify(thinkingLevel)}. Use one of: ${Object.keys(THINKING_LEVELS).join(", ")}` };
     }
 
-    return { status: "configured", path, provider: provider.trim(), modelId: modelId.trim(), thinkingLevel };
+    const mode: unknown = parsed.mode;
+    if (mode !== undefined && mode !== "always" && mode !== "fallback") {
+        return { status: "invalid", path, error: `Invalid mode: ${JSON.stringify(mode)}. Use "always" (default) or "fallback".` };
+    }
+
+    return { status: "configured", path, provider: provider.trim(), modelId: modelId.trim(), mode: mode ?? "always", thinkingLevel };
 }
 
 export async function getModel(ctx: ExtensionContext): Promise<Model<Api> | undefined> {
@@ -85,6 +92,13 @@ export async function getWebSearchModel(ctx: ExtensionContext): Promise<Model<Ap
     if (config.status === "invalid") return undefined;
 
     if (config.status === "configured") {
+        // "fallback" keeps a conversation model that has native search on its own
+        // provider tools and uses the configured model only when it has none, such
+        // as a chat/completions-only model. "always" pins every search.
+        if (config.mode === "fallback") {
+            const current = await getModel(ctx);
+            if (current) return current;
+        }
         const model = ctx.modelRegistry.find(config.provider, config.modelId);
         return isSupportedSearchModel(model) ? model : undefined;
     }

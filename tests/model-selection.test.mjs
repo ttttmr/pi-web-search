@@ -173,3 +173,98 @@ test('getWebSearchModel reports unsupported configured model instead of falling 
     assert.equal(result.details.api, 'openai-chat-completions');
   });
 });
+
+test('getWebSearchModel in fallback mode keeps a supported conversation model', async () => {
+  const currentModel = {
+    id: 'current-test',
+    provider: 'current-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/current',
+    headers: {},
+  };
+  const configuredModel = {
+    id: 'gpt-test',
+    provider: 'proxy-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/v1',
+    headers: {},
+  };
+  const ctx = mockCtx('test-key', currentModel, undefined, undefined, { models: [currentModel, configuredModel] });
+
+  await withWebSearchConfig({ provider: 'proxy-provider', model: 'gpt-test', mode: 'fallback' }, async () => {
+    assert.equal(await getWebSearchModel(ctx), currentModel);
+  });
+});
+
+test('getWebSearchModel in fallback mode uses the configured model for chat-only models', async () => {
+  const currentModel = {
+    id: 'local-test',
+    provider: 'local-provider',
+    api: 'openai-chat-completions',
+    baseUrl: 'https://example.test/local',
+    headers: {},
+  };
+  const configuredModel = {
+    id: 'gpt-test',
+    provider: 'proxy-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/v1',
+    headers: {},
+  };
+  const ctx = mockCtx('test-key', currentModel, undefined, undefined, { models: [currentModel, configuredModel] });
+
+  await withWebSearchConfig({ provider: 'proxy-provider', model: 'gpt-test', mode: 'fallback' }, async () => {
+    assert.equal(await getWebSearchModel(ctx), configuredModel);
+  });
+});
+
+test('getWebSearchModel keeps pinning every search when mode is always or omitted', async () => {
+  const currentModel = {
+    id: 'current-test',
+    provider: 'current-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/current',
+    headers: {},
+  };
+  const configuredModel = {
+    id: 'gpt-test',
+    provider: 'proxy-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/v1',
+    headers: {},
+  };
+  const ctx = mockCtx('test-key', currentModel, undefined, undefined, { models: [currentModel, configuredModel] });
+
+  await withWebSearchConfig({ provider: 'proxy-provider', model: 'gpt-test', mode: 'always' }, async () => {
+    assert.equal(await getWebSearchModel(ctx), configuredModel);
+  });
+  await withWebSearchConfig({ provider: 'proxy-provider', model: 'gpt-test' }, async () => {
+    assert.equal(await getWebSearchModel(ctx), configuredModel);
+  });
+});
+
+test('getWebSearchModel rejects an unknown mode', async () => {
+  const currentModel = {
+    id: 'current-test',
+    provider: 'current-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/current',
+    headers: {},
+  };
+  const configuredModel = {
+    id: 'gpt-test',
+    provider: 'proxy-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/v1',
+    headers: {},
+  };
+  const ctx = mockCtx('test-key', currentModel, undefined, undefined, { models: [currentModel, configuredModel] });
+
+  await withWebSearchConfig({ provider: 'proxy-provider', model: 'gpt-test', mode: 'sometimes' }, async (configPath) => {
+    assert.equal(await getWebSearchModel(ctx), undefined);
+    const result = missingWebSearchConfigResult(ctx);
+    assert.match(result.content[0].text, /Invalid mode/);
+    assert.equal(result.details.error, 'invalid_config');
+    assert.equal(result.details.configPath, configPath);
+  });
+});
