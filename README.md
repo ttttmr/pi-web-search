@@ -60,6 +60,18 @@ No extra config needed. Select a supported current model in pi and the tools aut
 
 When this file exists, `web_search` uses the configured provider/model first. If it is missing, `web_search` uses the current conversation model. If the selected model does not support native search, the tool returns an error instead of falling back.
 
+Add `"preferCurrentModel": true` to keep the conversation model on its own provider-native search and use the configured model only when the conversation model has none, such as a `chat/completions`-only model:
+
+```json
+{
+  "provider": "openai",
+  "model": "gpt-5.1",
+  "preferCurrentModel": true
+}
+```
+
+`preferCurrentModel` defaults to `false`, which pins every search to the configured model (the behavior of a file without the field). When `true`, Codex, Anthropic, Gemini, and other models that support native search keep using their own provider tool, so one proxy or local chat model in the conversation does not redirect those searches to the configured model. Non-boolean values are a config error.
+
 For OpenAI Responses models (including Azure, Codex, and Copilot), `web_search` defaults to the selected search model's lowest supported thinking level, independently of the conversation's thinking level. Pi's `clampThinkingLevel()` starts at `off` and uses the model's `thinkingLevelMap`: models that support disabling reasoning receive `reasoning.effort: "none"` (or their mapped value); models that mark `off` unsupported use their lowest enabled level, such as `minimal` or `low`. This also applies when `web-search.json` selects a dedicated search model. Higher effort can increase latency and cost.
 
 To override the minimum default, add `thinking` to `web-search.json`:

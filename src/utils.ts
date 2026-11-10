@@ -20,7 +20,7 @@ const SUPPORTED_PROVIDERS = ["deepseek", "google-generative-ai", "antigravity", 
 
 type WebSearchModelConfig =
     | { status: "missing"; path: string; }
-    | { status: "configured"; path: string; provider: string; modelId: string; thinkingLevel?: ModelThinkingLevel; }
+    | { status: "configured"; path: string; provider: string; modelId: string; preferCurrentModel: boolean; thinkingLevel?: ModelThinkingLevel; }
     | { status: "invalid"; path: string; error: string; };
 
 function isSupportedSearchModel(model: Model<Api> | undefined): model is Model<Api> {
@@ -71,7 +71,12 @@ function readWebSearchModelConfig(): WebSearchModelConfig {
         return { status: "invalid", path, error: `Invalid thinking level: ${JSON.stringify(thinkingLevel)}. Use one of: ${Object.keys(THINKING_LEVELS).join(", ")}` };
     }
 
-    return { status: "configured", path, provider: provider.trim(), modelId: modelId.trim(), thinkingLevel };
+    const preferCurrentModel: unknown = parsed.preferCurrentModel;
+    if (preferCurrentModel !== undefined && typeof preferCurrentModel !== "boolean") {
+        return { status: "invalid", path, error: `Invalid preferCurrentModel: ${JSON.stringify(preferCurrentModel)}. Use true or false (default false).` };
+    }
+
+    return { status: "configured", path, provider: provider.trim(), modelId: modelId.trim(), preferCurrentModel: preferCurrentModel === true, thinkingLevel };
 }
 
 export async function getModel(ctx: ExtensionContext): Promise<Model<Api> | undefined> {
@@ -85,6 +90,13 @@ export async function getWebSearchModel(ctx: ExtensionContext): Promise<Model<Ap
     if (config.status === "invalid") return undefined;
 
     if (config.status === "configured") {
+        // preferCurrentModel keeps a conversation model that has native search on
+        // its own provider tools and uses the configured model only when it has
+        // none, such as a chat/completions-only model. Default false pins every search.
+        if (config.preferCurrentModel) {
+            const current = await getModel(ctx);
+            if (current) return current;
+        }
         const model = ctx.modelRegistry.find(config.provider, config.modelId);
         return isSupportedSearchModel(model) ? model : undefined;
     }
@@ -107,6 +119,10 @@ export async function resolveWebSearchModel(ctx: ExtensionContext): Promise<WebS
     }
 
     if (config.status === "configured") {
+        if (config.preferCurrentModel) {
+            const current = await getModel(ctx);
+            if (current) return { status: "ok", model: current };
+        }
         const model = ctx.modelRegistry.find(config.provider, config.modelId);
         if (!model) {
             return { status: "configured_model_not_found", path: config.path, provider: config.provider, modelId: config.modelId };

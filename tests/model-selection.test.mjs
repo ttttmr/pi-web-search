@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getModel, getWebSearchModel, missingConfigResult, missingWebSearchConfigResult } from '../src/utils.ts';
+import { getModel, getWebSearchModel, resolveWebSearchModel, missingConfigResult, missingWebSearchConfigResult } from '../src/utils.ts';
 import { createMockCtx as mockCtx, withAgentDir, withWebSearchConfig } from './helpers.mjs';
 
 test('getModel does not fall back to another configured supported model', async () => {
@@ -171,5 +171,149 @@ test('getWebSearchModel reports unsupported configured model instead of falling 
     assert.equal(result.details.error, 'unsupported_model');
     assert.equal(result.details.configPath, configPath);
     assert.equal(result.details.api, 'openai-chat-completions');
+  });
+});
+
+test('getWebSearchModel with preferCurrentModel keeps a supported conversation model', async () => {
+  const currentModel = {
+    id: 'current-test',
+    provider: 'current-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/current',
+    headers: {},
+  };
+  const configuredModel = {
+    id: 'gpt-test',
+    provider: 'proxy-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/v1',
+    headers: {},
+  };
+  const ctx = mockCtx('test-key', currentModel, undefined, undefined, { models: [currentModel, configuredModel] });
+
+  await withWebSearchConfig({ provider: 'proxy-provider', model: 'gpt-test', preferCurrentModel: true }, async () => {
+    assert.equal(await getWebSearchModel(ctx), currentModel);
+  });
+});
+
+test('getWebSearchModel with preferCurrentModel uses the configured model for chat-only models', async () => {
+  const currentModel = {
+    id: 'local-test',
+    provider: 'local-provider',
+    api: 'openai-chat-completions',
+    baseUrl: 'https://example.test/local',
+    headers: {},
+  };
+  const configuredModel = {
+    id: 'gpt-test',
+    provider: 'proxy-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/v1',
+    headers: {},
+  };
+  const ctx = mockCtx('test-key', currentModel, undefined, undefined, { models: [currentModel, configuredModel] });
+
+  await withWebSearchConfig({ provider: 'proxy-provider', model: 'gpt-test', preferCurrentModel: true }, async () => {
+    assert.equal(await getWebSearchModel(ctx), configuredModel);
+  });
+});
+
+test('getWebSearchModel keeps pinning every search when preferCurrentModel is false or omitted', async () => {
+  const currentModel = {
+    id: 'current-test',
+    provider: 'current-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/current',
+    headers: {},
+  };
+  const configuredModel = {
+    id: 'gpt-test',
+    provider: 'proxy-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/v1',
+    headers: {},
+  };
+  const ctx = mockCtx('test-key', currentModel, undefined, undefined, { models: [currentModel, configuredModel] });
+
+  await withWebSearchConfig({ provider: 'proxy-provider', model: 'gpt-test', preferCurrentModel: false }, async () => {
+    assert.equal(await getWebSearchModel(ctx), configuredModel);
+  });
+  await withWebSearchConfig({ provider: 'proxy-provider', model: 'gpt-test' }, async () => {
+    assert.equal(await getWebSearchModel(ctx), configuredModel);
+  });
+});
+
+test('getWebSearchModel rejects a non-boolean preferCurrentModel', async () => {
+  const currentModel = {
+    id: 'current-test',
+    provider: 'current-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/current',
+    headers: {},
+  };
+  const configuredModel = {
+    id: 'gpt-test',
+    provider: 'proxy-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/v1',
+    headers: {},
+  };
+  const ctx = mockCtx('test-key', currentModel, undefined, undefined, { models: [currentModel, configuredModel] });
+
+  await withWebSearchConfig({ provider: 'proxy-provider', model: 'gpt-test', preferCurrentModel: 'yes' }, async (configPath) => {
+    assert.equal(await getWebSearchModel(ctx), undefined);
+    const result = missingWebSearchConfigResult(ctx);
+    assert.match(result.content[0].text, /Invalid preferCurrentModel/);
+    assert.equal(result.details.error, 'invalid_config');
+    assert.equal(result.details.configPath, configPath);
+  });
+});
+
+test('resolveWebSearchModel with preferCurrentModel keeps a supported conversation model', async () => {
+  const currentModel = {
+    id: 'current-test',
+    provider: 'current-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/current',
+    headers: {},
+  };
+  const configuredModel = {
+    id: 'gpt-test',
+    provider: 'proxy-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/v1',
+    headers: {},
+  };
+  const ctx = mockCtx('test-key', currentModel, undefined, undefined, { models: [currentModel, configuredModel] });
+
+  await withWebSearchConfig({ provider: 'proxy-provider', model: 'gpt-test', preferCurrentModel: true }, async () => {
+    const resolved = await resolveWebSearchModel(ctx);
+    assert.equal(resolved.status, 'ok');
+    assert.equal(resolved.model, currentModel);
+  });
+});
+
+test('resolveWebSearchModel with preferCurrentModel uses the configured model for chat-only models', async () => {
+  const currentModel = {
+    id: 'local-test',
+    provider: 'local-provider',
+    api: 'openai-chat-completions',
+    baseUrl: 'https://example.test/local',
+    headers: {},
+  };
+  const configuredModel = {
+    id: 'gpt-test',
+    provider: 'proxy-provider',
+    api: 'openai-responses',
+    baseUrl: 'https://example.test/v1',
+    headers: {},
+  };
+  const ctx = mockCtx('test-key', currentModel, undefined, undefined, { models: [currentModel, configuredModel] });
+
+  await withWebSearchConfig({ provider: 'proxy-provider', model: 'gpt-test', preferCurrentModel: true, thinking: 'low' }, async () => {
+    const resolved = await resolveWebSearchModel(ctx);
+    assert.equal(resolved.status, 'ok');
+    assert.equal(resolved.model, configuredModel);
+    assert.equal(resolved.thinkingLevel, 'low');
   });
 });
