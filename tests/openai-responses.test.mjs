@@ -63,7 +63,10 @@ for (const [label, provider, api, baseUrl, apiKey] of [
       assert.equal(body.stream, true);
       assert.equal(body.store, false);
       assert.equal(Object.hasOwn(body, 'instructions'), false);
-      assert.equal(Object.hasOwn(body, 'tool_choice'), false);
+      const expectedChoice = provider === 'openai'
+        ? { type: 'allowed_tools', mode: 'auto', tools: [{ type: 'web_search' }] }
+        : undefined;
+      assert.deepEqual(body.tool_choice, expectedChoice);
       assert.equal(Object.hasOwn(body, 'parallel_tool_calls'), false);
       return makeResponse([
         { data: { type: 'response.output_text.delta', delta: 'OpenAI search answer' } },
@@ -408,6 +411,7 @@ test('compat.webSearchDialect overrides the default Grok id detection', async (t
   for (const [label, model, expected] of [
     ['gateway grok-4.6 opted out', { ...base, provider: 'custom-gateway', id: 'grok-4.6', compat: { webSearchDialect: 'openai' } }, OPENAI],
     ['native xai opted out', { ...base, provider: 'xai', id: 'grok-4.6', compat: { webSearchDialect: 'openai' } }, OPENAI],
+    ['OpenAI provider with Grok dialect', { ...base, provider: 'openai', id: 'grok-4.6' }, GROK],
     ['non-Grok id opted in', { ...base, provider: 'custom-gateway', id: 'gpt-6-astra', compat: { webSearchDialect: 'grok' } }, GROK],
     ['prefixed id opted in', { ...base, provider: 'custom-gateway', id: 'x-ai/grok-4', compat: { webSearchDialect: 'grok' } }, GROK],
     ['prefixed id is not matched by default', { ...base, provider: 'custom-gateway', id: 'x-ai/grok-4' }, OPENAI],
@@ -416,6 +420,7 @@ test('compat.webSearchDialect overrides the default Grok id detection', async (t
   ]) {
     await callApiStream(mockCtx('test-key'), model, { contents: [{ parts: [{ text: 'q' }] }] });
     assert.deepEqual({ input: body.input, include: body.include }, expected, label);
+    assert.equal(body.tool_choice, undefined, label);
   }
 });
 
