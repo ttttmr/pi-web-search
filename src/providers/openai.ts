@@ -107,6 +107,10 @@ export function getOpenAISearchOptions(model: Model<Api>) {
         include: isCodex || isGrok
             ? ["web_search_call.action.sources"]
             : ["web_search_call.action.sources", "web_search_call.results"],
+        // Keep the allowlist separate: a proxy may append client tools to the advertised tools.
+        ...(model.provider === "openai" && model.api === "openai-responses" && !isGrok ? {
+            tool_choice: { type: "allowed_tools", mode: "auto", tools: [{ type: "web_search" }] },
+        } : {}),
         ...(isCodex ? {
             instructions: "Answer the user's request using web search when needed.",
             text: { verbosity: "low" },

@@ -27,7 +27,8 @@ for (const api of ['openai-responses', 'azure-openai-responses', 'openai-codex-r
       assert.equal(options.sessionId, 'test-session');
       assert.equal(options.transport, 'sse');
       assert.match(context.messages[0].content, /https:\/\/example.test\/source/);
-      const target = { id: 'search-model', provider: 'test-provider', api };
+      const provider = api === 'openai-responses' ? 'openai' : 'test-provider';
+      const target = { id: 'search-model', provider, api };
       const payload = await options.onPayload({ config: {} }, target);
       if (api === 'google-generative-ai') {
         assert.deepEqual(payload.config.tools, [{ googleSearch: {} }, { urlContext: {} }]);
@@ -40,6 +41,11 @@ for (const api of ['openai-responses', 'azure-openai-responses', 'openai-codex-r
       } else {
         assert.deepEqual(payload.tools, [{ type: 'web_search' }]);
         if (api === 'openai-codex-responses') assert.equal(payload.tool_choice, 'required');
+        if (api === 'openai-responses') {
+          // An intermediary may append a tool before serializing the routed request.
+          payload.tools.push({ type: 'function', name: 'extra_tool' });
+          assert.deepEqual(payload.tool_choice, { type: 'allowed_tools', mode: 'auto', tools: [{ type: 'web_search' }] });
+        }
         await options.onProviderStreamEvent({ type: 'response.output_text.delta', delta: 'Search answer' }, target);
       }
       return { stopReason: 'stop', usage };
